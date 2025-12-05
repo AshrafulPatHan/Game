@@ -1,2 +1,3 @@
-# Game
-javascript games
+# Javascript Game
+
+- createing javascript game
