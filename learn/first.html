@@ -1,20 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>controle</title>
     <!-- css -->
-     <style>
-
-     </style>
+    <style>
+        .object {
+            width: 50px;
+            height: 50px;
+            background: blueviolet;
+            position: absolute; /* Essential for moving with 'top' and 'left' */
+            
+        }
+    </style>
 </head>
-<body>
-    
-    
-    <!-- javascript -->
-     <script>
 
-     </script>
+<body>
+
+    <div class="object" id="myBox"></div>
+    
+
+    <!-- javascript -->
+    <script>
+        // controls 
+        const myBox = document.getElementById("myBox");
+        const moveAmount = 10;
+
+        // ✅ Initial position set via JS
+        myBox.style.top = "0px";
+        myBox.style.left = "0px";
+
+        document.addEventListener('keydown', (event) => {
+
+            let currentTop = parseInt(myBox.style.top);
+            let currentLeft = parseInt(myBox.style.left);
+
+            switch (event.key) {
+                case 'ArrowUp':
+                    myBox.style.top = (currentTop - moveAmount) + 'px';
+                    break;
+
+                case 'ArrowDown':
+                    myBox.style.top = (currentTop + moveAmount) + 'px';
+                    break;
+
+                case 'ArrowLeft':
+                    myBox.style.left = (currentLeft - moveAmount) + 'px';
+                    break;
+
+                case 'ArrowRight':
+                    myBox.style.left = (currentLeft + moveAmount) + 'px';
+                    break;
+
+            }
+        })
+
+    </script>
 </body>
+
 </html>

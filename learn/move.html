@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Obstacle Game</title>
+    <style>
+        .object {
+            width: 50px;
+            height: 50px;
+            background: blueviolet;
+            position: absolute;
+        }
+
+        .obstacle {
+            width: 10px;
+            height: 120px;
+            background: red;
+            position: absolute;
+            top: 100px;
+            left: 200px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="object" id="myBox"></div>
+
+<div class="obstacle" id="wall"></div>
+
+<script>
+    const myBox = document.getElementById("myBox");
+    const wall = document.getElementById("wall");
+    const moveAmount = 10;
+
+    myBox.style.top = "0px";
+    myBox.style.left = "0px";
+
+    function isColliding(nextTop, nextLeft) {
+        const boxRect = {
+            top: nextTop,
+            left: nextLeft,
+            right: nextLeft + 50,
+            bottom: nextTop + 50
+        };
+
+        const wallRect = wall.getBoundingClientRect();
+
+        return (
+            boxRect.right > wallRect.left &&
+            boxRect.left < wallRect.right &&
+            boxRect.bottom > wallRect.top &&
+            boxRect.top < wallRect.bottom
+        );
+    }
+
+    document.addEventListener("keydown", (event) => {
+        let currentTop = parseInt(myBox.style.top);
+        let currentLeft = parseInt(myBox.style.left);
+
+        let nextTop = currentTop;
+        let nextLeft = currentLeft;
+
+        if (event.key === "ArrowUp") {
+            nextTop -= moveAmount;
+        }
+        if (event.key === "ArrowDown") {
+            nextTop += moveAmount;
+        }
+        if (event.key === "ArrowLeft") {
+            nextLeft -= moveAmount;
+        }
+        if (event.key === "ArrowRight") {
+            nextLeft += moveAmount;
+        }
+
+        // ✅ STOP movement if collision happens
+        if (!isColliding(nextTop, nextLeft)) {
+            myBox.style.top = nextTop + "px";
+            myBox.style.left = nextLeft + "px";
+        }
+    });
+</script>
+
+</body>
+</html>
