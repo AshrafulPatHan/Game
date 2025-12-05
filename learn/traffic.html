@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Car Traffic Game</title>
+
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #7ec850;
+    font-family: Arial, sans-serif;
+}
+
+/* ✅ ROAD */
+.road {
+    position: absolute;
+    width: 300px;
+    height: 100vh;
+    background: #333;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.road::before {
+    content: "";
+    position: absolute;
+    width: 6px;
+    height: 100%;
+    background: repeating-linear-gradient(
+        white 0px,
+        white 20px,
+        transparent 20px,
+        transparent 40px
+    );
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* ✅ PLAYER CAR */
+.object {
+    width: 60px;
+    height: 40px;
+    position: absolute;
+    transition: 0.08s linear;
+    z-index: 10;
+}
+
+.car {
+    width: 100%;
+    height: 100%;
+    fill: yellow;
+}
+
+/* ✅ WALL */
+.obstacle {
+    width: 12px;
+    height: 120px;
+    background: red;
+    position: absolute;
+    top: 250px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* ✅ TRAFFIC CARS */
+.traffic {
+    width: 60px;
+    height: 40px;
+    background: cyan;
+    position: absolute;
+    border-radius: 5px;
+}
+
+/* ✅ GAME OVER POPUP */
+#gameOver {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    color: white;
+    font-size: 32px;
+    z-index: 100;
+}
+
+#gameOver button {
+    padding: 12px 25px;
+    font-size: 20px;
+    cursor: pointer;
+    margin-top: 15px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="road"></div>
+
+<!-- ✅ PLAYER -->
+<div class="object" id="myBox">
+<svg viewBox="0 0 512 512" class="car">
+<path transform="rotate(90 200 200)" d="M467 208H449L380 96H132L63 208H45C20.2 208 0 228.2 0 253V333C0 357.8 20.2 378 45 378H50C50 414.5 79.5 444 116 444C152.5 444 182 414.5 182 378H330C330 414.5 359.5 444 396 444C432.5 444 462 414.5 462 378H467C491.8 378 512 357.8 512 333V253C512 228.2 491.8 208 467 208Z"/>
+</svg>
+</div>
+
+<!-- ✅ WALL -->
+<div class="obstacle" id="wall"></div>
+
+<!-- ✅ TRAFFIC CARS -->
+<div class="traffic" id="t1"></div>
+<div class="traffic" id="t2"></div>
+
+<!-- ✅ GAME OVER SCREEN -->
+<div id="gameOver">
+    <div>🚨 GAME OVER 🚨</div>
+    <button onclick="location.reload()">Replay</button>
+</div>
+
+<script>
+const myBox = document.getElementById("myBox");
+const wall = document.getElementById("wall");
+const t1 = document.getElementById("t1");
+const t2 = document.getElementById("t2");
+const gameOver = document.getElementById("gameOver");
+
+let gameRunning = true;
+const moveAmount = 10;
+
+// ✅ Player Position
+myBox.style.top = "200px";
+myBox.style.left = "50%";
+
+// ✅ Traffic Start Position
+t1.style.top = "0px";
+t1.style.left = "45%";
+
+t2.style.top = "600px";
+t2.style.left = "55%";
+
+// ✅ Collision Check
+function isTouch(a, b) {
+    const r1 = a.getBoundingClientRect();
+    const r2 = b.getBoundingClientRect();
+
+    return (
+        r1.right > r2.left &&
+        r1.left < r2.right &&
+        r1.bottom > r2.top &&
+        r1.top < r2.bottom
+    );
+}
+
+// ✅ Keyboard Control
+document.addEventListener("keydown", (event) => {
+    if (!gameRunning) return;
+
+    let top = parseInt(myBox.style.top);
+    let left = myBox.getBoundingClientRect().left;
+
+    if (event.key === "ArrowUp") top -= moveAmount;
+    if (event.key === "ArrowDown") top += moveAmount;
+    if (event.key === "ArrowLeft") left -= moveAmount;
+    if (event.key === "ArrowRight") left += moveAmount;
+
+    myBox.style.top = top + "px";
+    myBox.style.left = left + "px";
+});
+
+// ✅ Traffic Animation Loop
+function trafficLoop() {
+    if (!gameRunning) return;
+
+    t1.style.top = (parseInt(t1.style.top) + 4) + "px";
+    t2.style.top = (parseInt(t2.style.top) - 5) + "px";
+
+    if (parseInt(t1.style.top) > window.innerHeight) t1.style.top = "-50px";
+    if (parseInt(t2.style.top) < -50) t2.style.top = window.innerHeight + "px";
+
+    // ✅ Collision Check
+    if (isTouch(myBox, t1) || isTouch(myBox, t2) || isTouch(myBox, wall)) {
+        gameRunning = false;
+        gameOver.style.display = "flex";
+    }
+
+    requestAnimationFrame(trafficLoop);
+}
+
+trafficLoop();
+</script>
+
+</body>
+</html>
