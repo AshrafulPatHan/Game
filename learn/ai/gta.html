@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini GTA-1 like (single file)</title>
+<style>
+  :root{
+    --road:#2f2f2f;
+    --grass:#6ec050;
+    --building:#b86a3a;
+    --player:#ffd54f;
+    --enemy:#4fc3f7;
+    --bullet:#ffffff;
+  }
+  html,body{height:100%;margin:0;background:var(--grass);font-family:Arial,Helvetica,sans-serif}
+  #gameWrap{display:flex;align-items:center;justify-content:center;height:100%}
+  canvas{background:linear-gradient(#6ec050,#5bb043);box-shadow:0 8px 30px rgba(0,0,0,.4);border-radius:6px}
+  /* HUD */
+  #hud{
+    position:fixed;left:12px;top:12px;color:white;
+    background:rgba(0,0,0,0.3);padding:8px 12px;border-radius:6px;font-size:14px;
+  }
+  #gameOver{
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:200;
+  }
+  #gameOver .box{background:#111;color:#fff;padding:20px 28px;border-radius:8px;text-align:center;min-width:260px}
+  #gameOver button{margin-top:12px;padding:8px 14px;font-size:16px;border-radius:6px;border:none;background:#ffd54f;cursor:pointer}
+  #controls{position:fixed;right:12px;top:12px;background:rgba(0,0,0,0.25);color:white;padding:8px;border-radius:6px}
+  a.small{color:lightblue;text-decoration:none;font-size:12px}
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="c" width="900" height="600"></canvas>
+</div>
+
+<div id="hud">Health: <span id="hp">100</span>&nbsp;&nbsp;Score: <span id="score">0</span></div>
+<div id="controls">
+  <div><strong>Controls</strong></div>
+  <div>W/A/S/D — move</div>
+  <div>←/→ rotate</div>
+  <div>Space — shoot</div>
+  <div>R — reset</div>
+  <div style="margin-top:6px"><a class="small" href="#" onclick="return false">Made in single HTML</a></div>
+</div>
+
+<div id="gameOver">
+  <div class="box">
+    <h2>GAME OVER</h2>
+    <div id="endMsg">You crashed!</div>
+    <button id="replay">Replay</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ----- Config -----
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const HUD_HP = document.getElementById('hp');
+  const HUD_SCORE = document.getElementById('score');
+  const gameOverEl = document.getElementById('gameOver');
+  const replayBtn = document.getElementById('replay');
+
+  // ----- Game state -----
+  let keys = {};
+  let lastTime = 0;
+  let gameRunning = true;
+  let score = 0;
+
+  // ----- Map: list of rectangular obstacles (x,y,w,h) -----
+  const walls = [
+    // big buildings / blocks
+    {x:50,y:50,w:220,h:140},
+    {x:630,y:50,w:220,h:140},
+    {x:320,y:400,w:260,h:160},
+    // small island at center as divider
+    {x:420,y:170,w:60,h:120},
+    // road-side curbs to shape the driveable area
+    {x:0,y:0,w:20,h:H}, {x:W-20,y:0,w:20,h:H}, {x:0,y:0,w:W,h:20}, {x:0,y:H-20,w:W,h:20}
+  ];
+
+  // ----- Player -----
+  const player = {
+    x: W/2 - 20, y: H - 110, w: 36, h: 48,
+    angle: -Math.PI/2, // facing up
+    speed: 0, maxSpeed: 3.2, accel: 0.18, friction: 0.92,
+    health: 100, alive:true
+  };
+
+  // ----- Enemies / traffic -----
+  const enemies = []; // each: {x,y,w,h,vx,vy,type,alive}
+  function spawnEnemy(x,y,vx,vy){
+    enemies.push({x,y,w:36,h:48,vx,vy,alive:true});
+  }
+  // Add some sample auto traffic (some top->down, some bottom->up, some left->right)
+  spawnEnemy(200, -80, 0, 1.6);
+  spawnEnemy(260, -320, 0, 1.8);
+  spawnEnemy(480, H+80, 0, -1.9);
+  spawnEnemy(540, H+200, 0, -1.3);
+  spawnEnemy(-80, 220, 1.6, 0);
+  spawnEnemy(W+80, 360, -1.4, 0);
+
+  // ----- Bullets -----
+  const bullets = []; // {x,y,vx,vy,life}
+
+  // ----- Utility -----
+  function rectsOverlap(a,b){
+    return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+  }
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b,v)); }
+
+  // ----- Input -----
+  window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if(e.key==='r' || e.key==='R') resetGame(); });
+  window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+  // ----- Shooting -----
+  window.addEventListener('keydown', e => {
+    if(!gameRunning) return;
+    if(e.code === 'Space'){
+      e.preventDefault();
+      // spawn bullet at nose of player
+      const speed = 7;
+      const noseX = player.x + player.w/2 + Math.cos(player.angle) * (player.h/2 + 6);
+      const noseY = player.y + player.h/2 + Math.sin(player.angle) * (player.h/2 + 6);
+      bullets.push({x:noseX,y:noseY,vx:Math.cos(player.angle)*speed, vy:Math.sin(player.angle)*speed, life:60});
+    }
+  });
+
+  // ----- Collision helpers -----
+  function willCollideWithWalls(x,y,w,h){
+    // check rectangle (x,y,w,h) against walls
+    for(const wall of walls){
+      if(!(x + w <= wall.x || x >= wall.x + wall.w || y + h <= wall.y || y >= wall.y + wall.h)){
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function updatePlayer(dt){
+    if(!player.alive) return;
+    // rotation with left/right arrows or a/d
+    if(keys['arrowleft'] || keys['a']) player.angle -= 0.08;
+    if(keys['arrowright'] || keys['d']) player.angle += 0.08;
+
+    // forward/back controls (w/s)
+    if(keys['w'] || keys['arrowup']){
+      player.speed += player.accel;
+    } else if(keys['s'] || keys['arrowdown']){
+      player.speed -= player.accel;
+    } else {
+      player.speed *= player.friction;
+    }
+    player.speed = clamp(player.speed, -player.maxSpeed, player.maxSpeed);
+
+    // proposed move
+    const nx = player.x + Math.cos(player.angle) * player.speed;
+    const ny = player.y + Math.sin(player.angle) * player.speed;
+
+    // collision: try separate axis to slide
+    if(!willCollideWithWalls(nx, player.y, player.w, player.h)){
+      player.x = nx;
+    } else {
+      player.speed = 0;
+    }
+    if(!willCollideWithWalls(player.x, ny, player.w, player.h)){
+      player.y = ny;
+    } else {
+      player.speed = 0;
+    }
+
+    // keep inside canvas big boundary
+    player.x = clamp(player.x, 20, W - 20 - player.w);
+    player.y = clamp(player.y, 20, H - 20 - player.h);
+  }
+
+  function updateEnemies(){
+    for(const e of enemies){
+      if(!e.alive) continue;
+      e.x += e.vx;
+      e.y += e.vy;
+      // wrap-around or bounce from edges
+      if(e.x < -150 && e.vx < 0) e.x = W + 50;
+      if(e.x > W + 150 && e.vx > 0) e.x = -120;
+      if(e.y < -150 && e.vy < 0) e.y = H + 50;
+      if(e.y > H + 150 && e.vy > 0) e.y = -120;
+
+      // collide with walls -> reverse or sidestep
+      const rectE = {x:e.x,y:e.y,w:e.w,h:e.h};
+      for(const w of walls){
+        if(!(rectE.x + rectE.w <= w.x || rectE.x >= w.x + w.w || rectE.y + rectE.h <= w.y || rectE.y >= w.y + w.h)){
+          // resolve by reversing velocity a bit
+          e.vx *= -1;
+          e.vy *= -1;
+        }
+      }
+    }
+  }
+
+  function updateBullets(){
+    for(let i=bullets.length-1;i>=0;i--){
+      const b = bullets[i];
+      b.x += b.vx;
+      b.y += b.vy;
+      b.life--;
+      // remove offscreen or life ended
+      if(b.life <= 0 || b.x < -50 || b.x > W+50 || b.y < -50 || b.y > H+50){
+        bullets.splice(i,1); continue;
+      }
+      // hit enemies
+      for(let j=0;j<enemies.length;j++){
+        const en = enemies[j];
+        if(!en.alive) continue;
+        const br = {x:b.x-3,y:b.y-3,w:6,h:6};
+        const er = {x:en.x,y:en.y,w:en.w,h:en.h};
+        if(!(br.x + br.w <= er.x || br.x >= er.x + er.w || br.y + br.h <= er.y || br.y >= er.y + er.h)){
+          // hit
+          en.alive = false;
+          bullets.splice(i,1);
+          score += 100;
+          HUD_SCORE.textContent = score;
+          break;
+        }
+      }
+    }
+  }
+
+  function checkPlayerCollisions(){
+    // player with enemies
+    const pr = {x:player.x, y:player.y, w:player.w, h:player.h};
+    for(const e of enemies){
+      if(!e.alive) continue;
+      const er = {x:e.x, y:e.y, w:e.w, h:e.h};
+      if(!(pr.x + pr.w <= er.x || pr.x >= er.x + er.w || pr.y + pr.h <= er.y || pr.y >= er.y + er.h)){
+        // crash
+        player.alive = false;
+        player.health = 0;
+        HUD_HP.textContent = 0;
+        endGame('You crashed into traffic!');
+        return;
+      }
+    }
+    // player with walls (if inside wall contact -> game over)
+    for(const w of walls){
+      if(!(pr.x + pr.w <= w.x || pr.x >= w.x + w.w || pr.y + pr.h <= w.y || pr.y >= w.y + w.h)){
+        // we block movement earlier; but if deeply inside => game over
+        // (just in case)
+        player.alive = false;
+        player.health = 0;
+        HUD_HP.textContent = 0;
+        endGame('You hit a building!');
+        return;
+      }
+    }
+  }
+
+  // ----- Render -----
+  function drawMap(){
+    // grass background already on canvas via style, but we draw simple road shapes
+    // Draw roads (two vertical lanes)
+    ctx.fillStyle = 'rgba(47,47,47,1)';
+    // central vertical road
+    const roadW = 300;
+    const rx = (W-roadW)/2;
+    ctx.fillRect(rx, 0, roadW, H);
+
+    // middle dashed line
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const dashW = 8;
+    for(let y=0;y<H;y+=28){
+      ctx.fillRect(W/2 - dashW/2, y, dashW, 16);
+    }
+
+    // walls/buildings
+    ctx.fillStyle = '#b86a3a';
+    for(const w of walls){
+      ctx.fillRect(w.x, w.y, w.w, w.h);
+      // windows / detail
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      for(let i=10;i<w.w-10;i+=26){
+        for(let j=10;j<w.h-10;j+=28){
+          ctx.fillRect(w.x+i, w.y+j, 14, 12);
+        }
+      }
+      ctx.fillStyle = '#b86a3a';
+    }
+  }
+
+  function drawPlayer(){
+    // draw rotated car
+    ctx.save();
+    ctx.translate(player.x + player.w/2, player.y + player.h/2);
+    ctx.rotate(player.angle + Math.PI/2); // adjust to point "up"
+    // car body
+    ctx.fillStyle = '#ffd54f';
+    roundRect(ctx, -player.w/2, -player.h/2, player.w, player.h, 6, true, false);
+    // windows
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(-player.w/4, -player.h/4, player.w/2, player.h/5);
+    // wheels
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-player.w/2, -player.h/2 + 4, 6, 10);
+    ctx.fillRect(player.w/2 -6, -player.h/2 + 4, 6, 10);
+    ctx.fillRect(-player.w/2, player.h/2 -14, 6, 10);
+    ctx.fillRect(player.w/2 -6, player.h/2 -14, 6, 10);
+    ctx.restore();
+  }
+
+  function drawEnemies(){
+    for(const e of enemies){
+      if(!e.alive) continue;
+      // rotated a bit based on velocity
+      const ang = Math.atan2(e.vy, e.vx);
+      ctx.save();
+      ctx.translate(e.x + e.w/2, e.y + e.h/2);
+      ctx.rotate(ang + Math.PI/2);
+      ctx.fillStyle = '#4fc3f7';
+      roundRect(ctx, -e.w/2, -e.h/2, e.w, e.h, 5, true, false);
+      ctx.restore();
+    }
+  }
+
+  function drawBullets(){
+    for(const b of bullets){
+      ctx.beginPath();
+      ctx.fillStyle = '#fff';
+      ctx.arc(b.x, b.y, 4, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function roundRect(ctx, x, y, w, h, r, fill, stroke){
+    if (typeof r === 'undefined') r = 5;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  // ----- Game Over -----
+  function endGame(reason){
+    gameRunning = false;
+    gameOverEl.style.display = 'flex';
+    document.getElementById('endMsg').textContent = reason;
+  }
+  replayBtn.addEventListener('click', ()=> location.reload());
+
+  // ----- Main loop -----
+  function loop(ts){
+    if(!lastTime) lastTime = ts;
+    const dt = (ts - lastTime) / 16.666; // ~frames
+    lastTime = ts;
+    if(gameRunning){
+      // update
+      updatePlayer(dt);
+      updateEnemies(dt);
+      updateBullets(dt);
+      checkPlayerCollisions();
+
+      // draw
+      ctx.clearRect(0,0,W,H);
+      drawMap();
+      drawEnemies();
+      drawBullets();
+      drawPlayer();
+
+      // HUD
+      HUD_HP.textContent = Math.max(0, Math.floor(player.health));
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ----- Simple enemy behavior: they occasionally respawn if killed -----
+  setInterval(()=>{
+    // occasionally spawn a new random moving enemy
+    if(!gameRunning) return;
+    // reuse dead or push new
+    const free = enemies.find(e=>!e.alive);
+    const sx = Math.random()>0.5? (Math.random()*W) : (Math.random()*W);
+    const sy = Math.random()>0.5? -80 : H+80;
+    const vy = sy < 0 ? (1.4 + Math.random()*1.4) : -(1.2 + Math.random()*1.6);
+    if(free){
+      free.x = sx; free.y = sy; free.vx = 0; free.vy = vy; free.alive=true;
+    } else {
+      spawnEnemy(sx, sy, 0, vy);
+    }
+  }, 2000);
+
+  // also, slow health drain when colliding with road boundaries for challenge
+  setInterval(()=>{
+    if(!gameRunning) return;
+    // health decays slowly
+    player.health = clamp(player.health - 0.02, 0, 100);
+    if(player.health <= 0 && player.alive){
+      player.alive = false;
+      endGame('You ran out of health!');
+    }
+  }, 120);
+
+  // Done — helper to reset programmatically
+  function resetGame(){ location.reload(); }
+
+})();
+</script>
+</body>
+</html>
